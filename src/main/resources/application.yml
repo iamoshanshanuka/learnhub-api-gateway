@@ -1,0 +1,63 @@
+server:
+  port: ${SERVER_PORT:8080}
+
+spring:
+  application:
+    name: api-gateway
+  config:
+    # "optional:" = the gateway still starts if the Config Server is briefly unavailable
+    import: optional:configserver:${CONFIG_SERVER_URL:http://localhost:8888}
+  cloud:
+    config:
+      # never hang on startup because of an unreachable config server
+      request-connect-timeout: 5000
+      request-read-timeout: 10000
+    loadbalancer:
+      cache:
+        enabled: false
+    gateway:
+      server:
+        webflux:
+          globalcors:
+            cors-configurations:
+              '[/**]':
+                allowedOriginPatterns: "*"
+                allowedMethods: [GET, POST, PUT, PATCH, DELETE, OPTIONS]
+                allowedHeaders: "*"
+          # Each route resolves through Eureka (lb://name) and is load-balanced across all instances.
+          # Emergency switch: set e.g. STUDENT_SERVICE_URI=http://10.10.0.x:8081 in the PM2 environment
+          # to bypass Eureka for one service without rebuilding anything.
+          routes:
+            - id: student-service
+              uri: ${STUDENT_SERVICE_URI:lb://student-service}
+              predicates:
+                - Path=/api/students/**
+            - id: course-service
+              uri: ${COURSE_SERVICE_URI:lb://course-service}
+              predicates:
+                - Path=/api/courses/**
+            - id: enrollment-service
+              uri: ${ENROLLMENT_SERVICE_URI:lb://enrollment-service}
+              predicates:
+                - Path=/api/enrollments/**
+
+eureka:
+  client:
+    # Comma separated list - both Eureka nodes on GCP
+    service-url:
+      defaultZone: ${EUREKA_SERVER_URL:http://localhost:8761/eureka/}
+    registry-fetch-interval-seconds: 10
+  instance:
+    prefer-ip-address: true
+    instance-id: ${spring.cloud.client.ip-address}:${spring.application.name}:${server.port}
+    lease-renewal-interval-in-seconds: 10
+    lease-expiration-duration-in-seconds: 60
+
+management:
+  health:
+    config:
+      enabled: false
+  endpoints:
+    web:
+      exposure:
+        include: health,info,gateway
